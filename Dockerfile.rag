@@ -1,0 +1,10 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY rag_demo/requirements.txt /app/rag_demo/requirements.txt
+RUN pip install --no-cache-dir -r /app/rag_demo/requirements.txt
+
+COPY rag_demo /app/rag_demo
+
+CMD ["python", "rag_demo/rag_demo.py"]

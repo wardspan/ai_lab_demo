@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  mock-llm:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./jailbreak_demo:/app/jailbreak_demo
+      - ./harness:/app/harness
+      - ./rag_demo:/app/rag_demo
+      - ./rag_redact:/app/rag_redact
+      - ./poisoning_demo:/app/poisoning_demo
+      - ./tools:/app/tools
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+    command: ["uvicorn", "jailbreak_demo.server:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  rag:
+    build:
+      context: .
+      dockerfile: Dockerfile.rag
+    env_file:
+      - .env
+    volumes:
+      - ./rag_demo:/app/rag_demo
+    command: ["python", "rag_demo/rag_demo.py", "--defended"]
+    depends_on:
+      mock-llm:
+        condition: service_started
+
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   restart: unless-stopped
+  #   # Uncomment to run Ollama inside the stack. Host must accept the model license.
+
+volumes:
+  ollama-data:
