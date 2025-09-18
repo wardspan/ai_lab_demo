@@ -65,7 +65,7 @@ class TaskResult(Dict[str, object]):
     """Dictionary-based result for JSON serialization."""
 
 
-def run_task(task_name: str, log_filename: str, *, env: Optional[Dict[str, str]] = None) -> TaskResult:
+def run_task(task_name: str, log_filename: str, env: Optional[Dict[str, str]] = None) -> TaskResult:
     if task_name not in COMMANDS:
         raise ValueError(f"Task '{task_name}' is not permitted")
 
