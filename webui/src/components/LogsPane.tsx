@@ -1,33 +1,43 @@
 import { useEffect, useMemo, useState } from "react";
 import { knownLogs, KnownLog, api } from "../lib/api";
 import { Button } from "./Button";
-import { Search, Copy } from "lucide-react";
+import { Search, Copy, RotateCcw } from "lucide-react";
 
 interface LogsPaneProps {
   activeLog: KnownLog;
   onActiveLogChange: (log: KnownLog) => void;
 }
 
-interface LogEvent {
-  source: string;
-  line: string;
-}
+type LogMap = Record<string, string[]>;
 
 export function LogsPane({ activeLog, onActiveLogChange }: LogsPaneProps) {
-  const [events, setEvents] = useState<LogEvent[]>([]);
+  const [logMap, setLogMap] = useState<LogMap>({});
   const [filter, setFilter] = useState("");
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    const source = new EventSource(`${import.meta.env.VITE_API_BASE || __API_BASE__ || "http://localhost:5055/api"}/logs/stream`);
+    const base = import.meta.env.VITE_API_BASE || __API_BASE__ || "http://localhost:5055/api";
+    const source = new EventSource(`${base}/logs/stream`);
     source.onopen = () => setConnected(true);
     source.onerror = () => setConnected(false);
     source.addEventListener("log", (event) => {
       try {
-        const data = JSON.parse((event as MessageEvent).data) as LogEvent;
-        setEvents((prev) => [...prev.slice(-499), data]);
+        const data = JSON.parse((event as MessageEvent).data) as { source: string; line: string };
+        setLogMap((prev) => {
+          const current = prev[data.source] || [];
+          const updated = [...current, data.line].slice(-500);
+          return { ...prev, [data.source]: updated };
+        });
       } catch (error) {
         console.error("Failed to parse log event", error);
+      }
+    });
+    source.addEventListener("log_reset", (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data) as { source: string };
+        setLogMap((prev) => ({ ...prev, [data.source]: [] }));
+      } catch (error) {
+        console.error("Failed to parse log reset", error);
       }
     });
     return () => {
@@ -38,26 +48,29 @@ export function LogsPane({ activeLog, onActiveLogChange }: LogsPaneProps) {
   useEffect(() => {
     api.tailLog(activeLog).then((res) => {
       if (res.lines) {
-        setEvents(res.lines.map((line: string) => ({ source: activeLog, line })));
+        setLogMap((prev) => ({ ...prev, [activeLog]: res.lines }));
       }
     });
   }, [activeLog]);
 
+  const activeLines = logMap[activeLog] || [];
+
   const filtered = useMemo(() => {
-    return events.filter((event) => {
-      if (filter && !event.line.toLowerCase().includes(filter.toLowerCase())) {
-        return false;
-      }
-      return event.source === activeLog;
-    });
-  }, [events, filter, activeLog]);
+    if (!filter) return activeLines;
+    const needle = filter.toLowerCase();
+    return activeLines.filter((line) => line.toLowerCase().includes(needle));
+  }, [activeLines, filter]);
 
   const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(filtered.map((entry) => entry.line).join("\n"));
+      await navigator.clipboard.writeText(filtered.join("\n"));
     } catch (error) {
       console.error("Clipboard copy failed", error);
     }
+  };
+
+  const clearLog = () => {
+    setLogMap((prev) => ({ ...prev, [activeLog]: [] }));
   };
 
   return (
@@ -80,6 +93,9 @@ export function LogsPane({ activeLog, onActiveLogChange }: LogsPaneProps) {
           <Button variant="secondary" onClick={copyToClipboard}>
             <Copy className="h-4 w-4" /> Copy
           </Button>
+          <Button variant="ghost" onClick={clearLog}>
+            <RotateCcw className="h-4 w-4" /> Clear
+          </Button>
           <select
             value={activeLog}
             onChange={(event) => onActiveLogChange(event.target.value as KnownLog)}
@@ -99,9 +115,9 @@ export function LogsPane({ activeLog, onActiveLogChange }: LogsPaneProps) {
             No log entries yet. Run a demo to generate output.
           </div>
         ) : (
-          filtered.map((event, index) => (
-            <div key={`${event.source}-${index}`} className="whitespace-pre-wrap">
-              {event.line}
+          filtered.map((line, index) => (
+            <div key={`${activeLog}-${index}`} className="whitespace-pre-wrap">
+              {line}
             </div>
           ))
         )}

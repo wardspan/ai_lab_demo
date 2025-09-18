@@ -120,6 +120,19 @@ def summarize_metrics(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+async def run_and_broadcast_metrics() -> Dict[str, Any]:
+    result = await execute("ORCHESTRATE", "metrics.log")
+    status = result.get("status")
+    payload = read_json(METRICS_PATH)
+    data = payload.get("data") if not payload.get("missing") else None
+    summary = summarize_metrics(data)
+    await sse_manager.publish(
+        "metrics",
+        {"source": "metrics", "data": {"raw": data, "summary": summary, "status": status}},
+    )
+    return {"task": result, "summary": summary, "raw": data, "status": status}
+
+
 def update_env(updates: Dict[str, str]) -> Dict[str, Any]:
     if not ENV_PATH.exists():
         raise HTTPException(status_code=400, detail=".env file not found; create one at repo root")
@@ -225,79 +238,80 @@ async def health() -> Dict[str, Any]:
 
 @app.post("/api/demo/jailbreak/run", response_model=DemoResponse)
 async def run_jailbreak_demo() -> DemoResponse:
+    await sse_manager.publish("log_reset", {"source": "jailbreak"})
     results = []
     results.append(await execute("JAILBREAK_BLOCKED", JAILBREAK_LOG.name))
     results.append(await execute("JAILBREAK_BYPASS", JAILBREAK_LOG.name))
     summary = "Executed blocked and bypass prompts"
     append_summary(JAILBREAK_LOG, summary)
     await sse_manager.publish("demo_completed", {"demo": "jailbreak", "summary": summary})
-    return DemoResponse(status="ok", results=results, message=summary)
+    metrics_info = await run_and_broadcast_metrics()
+    return DemoResponse(status="ok", results={"steps": results, "metrics": metrics_info}, message=summary)
 
 
 @app.post("/api/demo/jailbreak/defense", response_model=DemoResponse)
 async def run_jailbreak_defense() -> DemoResponse:
     update_env({"STRICT_MODE": "true"})
+    await sse_manager.publish("log_reset", {"source": "jailbreak"})
     result = await execute("JAILBREAK_BYPASS", JAILBREAK_LOG.name)
-    orchestrate = await execute("ORCHESTRATE", "metrics.log")
-    metrics_payload = read_json(METRICS_PATH)
-    summary = summarize_metrics(metrics_payload.get("data") if not metrics_payload.get("missing") else None)
+    metrics_info = await run_and_broadcast_metrics()
     await sse_manager.publish("demo_completed", {"demo": "jailbreak_defense", "summary": "STRICT_MODE enabled"})
-    await sse_manager.publish(
-        "metrics",
-        {"source": "metrics", "data": {"raw": metrics_payload.get("data"), "summary": summary}},
-    )
     return DemoResponse(
         status="ok",
-        results={"bypass": result, "metrics": orchestrate},
+        results={"bypass": result, "metrics": metrics_info},
         message="STRICT_MODE enforced; bypass rerun",
     )
 
 
 @app.post("/api/demo/rag/injection", response_model=DemoResponse)
 async def run_rag_injection() -> DemoResponse:
+    await sse_manager.publish("log_reset", {"source": "rag_injection"})
     build = await execute("RAG_BUILD", RAG_INJECTION_LOG.name)
     run = await execute("RAG_RUN", RAG_INJECTION_LOG.name)
     summary = "RAG injection executed"
     append_summary(RAG_INJECTION_LOG, summary)
     await sse_manager.publish("demo_completed", {"demo": "rag_injection", "summary": summary})
-    return DemoResponse(status="ok", results={"build": build, "run": run}, message=summary)
+    metrics_info = await run_and_broadcast_metrics()
+    return DemoResponse(status="ok", results={"build": build, "run": run, "metrics": metrics_info}, message=summary)
 
 
 @app.post("/api/demo/rag/defense", response_model=DemoResponse)
 async def run_rag_defense() -> DemoResponse:
+    await sse_manager.publish("log_reset", {"source": "rag_defense"})
     result = await execute("RAG_DEFENDED", RAG_DEFENSE_LOG.name)
     summary = "RAG defense run with sanitizer"
     append_summary(RAG_DEFENSE_LOG, summary)
     await sse_manager.publish("demo_completed", {"demo": "rag_defense", "summary": summary})
-    return DemoResponse(status="ok", results=result, message=summary)
+    metrics_info = await run_and_broadcast_metrics()
+    return DemoResponse(status="ok", results={"defended": result, "metrics": metrics_info}, message=summary)
 
 
 @app.post("/api/demo/poisoning/run", response_model=DemoResponse)
 async def run_poisoning_demo() -> DemoResponse:
+    await sse_manager.publish("log_reset", {"source": "poisoning"})
     result = await execute("POISONING_RUN", POISONING_LOG.name)
     summary = "Poisoning demo complete"
     append_summary(POISONING_LOG, summary)
     await sse_manager.publish("demo_completed", {"demo": "poisoning", "summary": summary})
-    return DemoResponse(status="ok", results=result, message=summary)
+    metrics_info = await run_and_broadcast_metrics()
+    return DemoResponse(status="ok", results={"poisoning": result, "metrics": metrics_info}, message=summary)
 
 
 @app.post("/api/demo/redaction/run", response_model=DemoResponse)
 async def run_redaction_demo() -> DemoResponse:
+    await sse_manager.publish("log_reset", {"source": "redaction"})
     result = await execute("REDACTION_RUN", REDACTION_LOG.name)
     summary = "Redaction demo complete"
     append_summary(REDACTION_LOG, summary)
     await sse_manager.publish("demo_completed", {"demo": "redaction", "summary": summary})
-    return DemoResponse(status="ok", results=result, message=summary)
+    metrics_info = await run_and_broadcast_metrics()
+    return DemoResponse(status="ok", results={"redaction": result, "metrics": metrics_info}, message=summary)
 
 
 @app.post("/api/metrics/orchestrate", response_model=Dict[str, Any])
 async def orchestrate_metrics() -> Dict[str, Any]:
-    await execute("ORCHESTRATE", "metrics.log")
-    payload = read_json(METRICS_PATH)
-    data = payload.get("data") if not payload.get("missing") else None
-    summary = summarize_metrics(data)
-    await sse_manager.publish("metrics", {"source": "metrics", "data": {"raw": data, "summary": summary}})
-    return {"status": "ok", "metrics": data, "summary": summary}
+    metrics_info = await run_and_broadcast_metrics()
+    return {"status": metrics_info.get("status"), "metrics": metrics_info.get("raw"), "summary": metrics_info.get("summary")}
 
 
 @app.get("/api/metrics", response_model=Dict[str, Any])

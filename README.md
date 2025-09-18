@@ -15,23 +15,24 @@ This repository contains a self-contained set of classroom-ready demonstrations 
    ```bash
    cp .env.example .env
    ```
-3. Launch the demo services:
+3. Launch the demo services (this boots the mock LLM, controller API, RAG helper, and the React dashboard):
    ```bash
    docker compose up -d
    ```
-4. Exercise the jailbreak demo:
+4. Visit the dashboard at `http://localhost:5173` to run demos, view metrics, and stream logs in real time.
+5. (Optional) Exercise the jailbreak demo from the CLI:
    ```bash
    bash jailbreak_demo/client.sh
    ```
-5. Build sample RAG documents and run the injection demo (defended and undefended):
+6. (Optional) Build sample RAG documents and run the injection demo from the host (the RAG service in Docker already generates fresh docs automatically on boot):
    ```bash
    python rag_demo/build_docs.py
    python rag_demo/rag_demo.py
    python rag_demo/rag_demo.py --defended
    ```
-6. Run the metrics harness to observe ASR/latency:
+7. (Optional) Run the metrics harness manually from inside the controller container:
    ```bash
-   python harness/orchestrator.py
+   docker exec -it controller_api python harness/orchestrator.py
    ```
 
 See the Acceptance Tests section below for more demo commands.
@@ -42,16 +43,16 @@ Spin up the controller API and dashboard with the same compose stack and explore
 ### Web UI Quickstart
 1. `docker compose up -d`
 2. Open `http://localhost:5173` in your browser.
-3. Use the Dashboard page to trigger demos and observe live status updates. Buttons automatically disable while jobs run.
+3. Use the Dashboard page to trigger demos and observe live status updates. Buttons include hover tooltips describing each scenario and automatically disable while jobs run.
 
 ### Live Logs
 - Navigate to the Logs page to see `controller_api/logs/*.log` and `jailbreak_demo/logs/requests.log` in real time.
 - The viewer subscribes to `/api/logs/stream` (SSE). Connection status is shown in the header.
-- Filter lines via the search box or copy the current view to your clipboard.
+- Logs automatically clear between demo runs (the controller emits a `log_reset` event), and you can manually clear or copy the current buffer at any time.
 
 ### Metrics Visualization
-- Visit the Metrics page and click **Run Orchestrator** to execute `harness/orchestrator.py` through the controller.
-- ASR, leakage count, and detection latency are plotted over time. Gauges update whenever new metrics land in `harness/results/metrics.json`.
+- Metrics collection is automated: every demo or defense action triggers `harness/orchestrator.py` inside the controller container, so charts update immediately after a run.
+- Visit the Metrics page to see ASR, leakage count, and detection latency plotted over time. Use **Run Orchestrator** if you want an extra refresh on demand.
 
 ### Settings & Provider Toggle
 - The Settings page writes to `.env` via the controller API. Switch between `mock` and `ollama`, update `STRICT_MODE`, or change the `BYPASS_TOKEN`.
@@ -91,8 +92,7 @@ If Ollama is unavailable, the server falls back to mock mode and prints a warnin
 - `client.sh`: Sample curl commands that illustrate a blocked prompt vs. a simulated [SIMULATED BYPASS] response.
 - Toggle defenses via `STRICT_MODE` or by editing `BLOCK_PATTERNS`.
 
-### RAG Injection Demo (`rag_demo/`)
-- `build_docs.py`: Generates synthetic documentation and a planted HTML instruction token.
+- `build_docs.py`: Generates synthetic documentation and a planted HTML instruction token (Docker startup runs this automatically so demos always have fresh content).
 - `rag_demo.py`: Performs naive retrieval and shows how the injection executes unless sanitized (`--defended` flag).
 - `sanitizer.py`: Implements `strip_instruction_tokens` plus simple unit tests.
 
@@ -105,6 +105,7 @@ If Ollama is unavailable, the server falls back to mock mode and prints a warnin
 ### Harness (`harness/`)
 - `orchestrator.py`: Runs prompts against the jailbreak API, computes attack success rate (ASR), leakage count, and detection latency, then writes `harness/results/metrics.json`.
 - `run_redteam.py`: Loads `harness/redteam.yml` and executes benign template tests. Instructors can add their own prompts locally.
+- The controller API triggers the orchestrator automatically after every demo/defense action so the dashboard metrics stay fresh without extra steps.
 
 ### Tools (`tools/`)
 - `start_lab.sh`: Convenience script to source `.env` and launch Docker Compose.
@@ -126,6 +127,7 @@ Run the commands below to validate the lab. Each step should produce the describ
 - **Want more prompts?** Edit `harness/redteam.yml` locally. Keep them synthetic and safe.
 - **Need fresh docs?** Re-run `python rag_demo/build_docs.py` to regenerate the synthetic corpus.
 - **Where are logs?** Check `jailbreak_demo/logs/requests.log` (created at runtime). Rotate or delete between sessions as needed.
+- **Metrics not updating?** Inspect `controller_api/logs/metrics.log` for orchestrator errors; the controller reruns the harness after each demo, so failures usually indicate a missing dependency or bad configuration inside the container.
 
 ## License
 See [LICENSE](LICENSE) for licensing details.
