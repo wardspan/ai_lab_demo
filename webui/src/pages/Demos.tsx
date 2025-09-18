@@ -2,6 +2,7 @@ import { useContext, useState } from "react";
 import { DemoContext } from "../App";
 import { Button } from "../components/Button";
 import { CodeBlock } from "../components/CodeBlock";
+import { Tooltip } from "../components/Tooltip";
 
 interface DemoCardConfig {
   key: "jailbreak" | "jailbreak-defense" | "rag-injection" | "rag-defense" | "poisoning" | "redaction";
@@ -88,9 +89,11 @@ export default function Demos() {
             <h2 className="mt-1 text-lg font-semibold text-slate-100">{card.title}</h2>
             <p className="mt-2 flex-1 text-sm text-slate-400">{card.description}</p>
             <div className="mt-4 flex gap-3">
-              <Button title={card.description} loading={running[card.key]} onClick={() => runDemo(card.key)}>
-                {card.defense ? "Run Defense" : "Run Demo"}
-              </Button>
+              <Tooltip text={card.description}>
+                <Button loading={running[card.key]} onClick={() => runDemo(card.key)}>
+                  {card.defense ? "Run Defense" : "Run Demo"}
+                </Button>
+              </Tooltip>
               <Button
                 variant="ghost"
                 onClick={() => setOpenCommand((prev) => (prev === card.key ? null : card.key))}

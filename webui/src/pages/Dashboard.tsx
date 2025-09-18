@@ -2,6 +2,7 @@ import { useContext, useMemo } from "react";
 import { DemoContext } from "../App";
 import { StatCard } from "../components/StatCard";
 import { Button } from "../components/Button";
+import { Tooltip } from "../components/Tooltip";
 
 export default function Dashboard() {
   const context = useContext(DemoContext);
@@ -28,61 +29,47 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold text-slate-100">Run Demos</h2>
           <p className="mt-1 text-sm text-slate-400">Trigger key workloads with safe, synthetic prompts.</p>
           <div className="mt-6 grid gap-3">
-            <Button
-              title="Send blocked and bypass prompts to the FastAPI server to showcase guardrails."
-              loading={running["jailbreak"]}
-              onClick={() => runDemo("jailbreak")}
-            >
-              Run Jailbreak Demo
-            </Button>
-            <Button
-              title="Build synthetic docs and run the RAG pipeline without defenses to show injection effects."
-              loading={running["rag-injection"]}
-              onClick={() => runDemo("rag-injection")}
-            >
-              Run RAG Injection
-            </Button>
-            <Button
-              title="Train the classifier, add poisoned samples, and display the accuracy change."
-              loading={running["poisoning"]}
-              onClick={() => runDemo("poisoning")}
-            >
-              Run Poisoning Demo
-            </Button>
-            <Button
-              title="Execute the PII redaction utility to highlight pre-retrieval sanitization."
-              loading={running["redaction"]}
-              onClick={() => runDemo("redaction")}
-            >
-              Run RAG Redaction
-            </Button>
+            <Tooltip text="Send blocked and bypass prompts to the FastAPI server to showcase guardrails.">
+              <Button loading={running["jailbreak"]} onClick={() => runDemo("jailbreak")}>
+                Run Jailbreak Demo
+              </Button>
+            </Tooltip>
+            <Tooltip text="Build synthetic docs and run the RAG pipeline without defenses to show injection effects.">
+              <Button loading={running["rag-injection"]} onClick={() => runDemo("rag-injection")}>
+                Run RAG Injection
+              </Button>
+            </Tooltip>
+            <Tooltip text="Train the classifier, add poisoned samples, and display the accuracy change.">
+              <Button loading={running["poisoning"]} onClick={() => runDemo("poisoning")}>
+                Run Poisoning Demo
+              </Button>
+            </Tooltip>
+            <Tooltip text="Execute the PII redaction utility to highlight pre-retrieval sanitization.">
+              <Button loading={running["redaction"]} onClick={() => runDemo("redaction")}>
+                Run RAG Redaction
+              </Button>
+            </Tooltip>
           </div>
         </div>
         <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
           <h2 className="text-lg font-semibold text-slate-100">Defensive Toggles</h2>
           <p className="mt-1 text-sm text-slate-400">Compare offense vs defense with one click.</p>
           <div className="mt-6 grid gap-3">
-            <Button
-              title="Enable STRICT_MODE and rerun the bypass prompt to show tightened policies."
-              loading={running["jailbreak-defense"]}
-              onClick={() => runDemo("jailbreak-defense")}
-            >
-              Run Jailbreak Defense
-            </Button>
-            <Button
-              title="Run the RAG pipeline with strip_instruction_tokens enabled."
-              loading={running["rag-defense"]}
-              onClick={() => runDemo("rag-defense")}
-            >
-              Run RAG Sanitizer
-            </Button>
-            <Button
-              title="Invoke harness/orchestrator.py to compute fresh ASR, leakage, and latency metrics."
-              loading={running["orchestrate"]}
-              onClick={() => runDemo("orchestrate")}
-            >
-              Refresh Metrics
-            </Button>
+            <Tooltip text="Enable STRICT_MODE and rerun the bypass prompt to show tightened policies.">
+              <Button loading={running["jailbreak-defense"]} onClick={() => runDemo("jailbreak-defense")}>
+                Run Jailbreak Defense
+              </Button>
+            </Tooltip>
+            <Tooltip text="Run the RAG pipeline with strip_instruction_tokens enabled.">
+              <Button loading={running["rag-defense"]} onClick={() => runDemo("rag-defense")}>
+                Run RAG Sanitizer
+              </Button>
+            </Tooltip>
+            <Tooltip text="Invoke harness/orchestrator.py to compute fresh ASR, leakage, and latency metrics.">
+              <Button loading={running["orchestrate"]} onClick={() => runDemo("orchestrate")}>
+                Refresh Metrics
+              </Button>
+            </Tooltip>
           </div>
         </div>
       </div>

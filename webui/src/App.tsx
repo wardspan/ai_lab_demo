@@ -37,14 +37,36 @@ interface ToastMessage {
 export const DemoContext = createContext<DemoContextValue | undefined>(undefined);
 
 function ToastContainer({ toasts, remove }: { toasts: ToastMessage[]; remove: (id: number) => void }) {
+  const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+
   useEffect(() => {
-    const timers = toasts.map((toast) =>
-      setTimeout(() => {
+    const ids = new Set(toasts.map((toast) => toast.id));
+    // Clear timers for toasts that are gone
+    for (const [id, timer] of Array.from(timersRef.current.entries())) {
+      if (!ids.has(id)) {
+        clearTimeout(timer);
+        timersRef.current.delete(id);
+      }
+    }
+    // Create timers for new toasts
+    toasts.forEach((toast) => {
+      if (timersRef.current.has(toast.id)) {
+        return;
+      }
+      const timer = setTimeout(() => {
         remove(toast.id);
-      }, 4500)
-    );
+        timersRef.current.delete(toast.id);
+      }, 4500);
+      timersRef.current.set(toast.id, timer);
+    });
     return () => {
-      timers.forEach(clearTimeout);
+      toasts.forEach((toast) => {
+        const timer = timersRef.current.get(toast.id);
+        if (timer) {
+          clearTimeout(timer);
+          timersRef.current.delete(toast.id);
+        }
+      });
     };
   }, [toasts, remove]);
 
@@ -53,12 +75,21 @@ function ToastContainer({ toasts, remove }: { toasts: ToastMessage[]; remove: (i
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`rounded-2xl border border-slate-800 bg-slate-900/90 p-4 shadow-lg ${
+          className={`flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-900/90 p-4 shadow-lg ${
             toast.variant === "error" ? "border-red-500/40" : toast.variant === "success" ? "border-green-500/30" : ""
           }`}
         >
-          <div className="text-sm font-semibold text-slate-100">{toast.title}</div>
-          {toast.description && <div className="mt-1 text-xs text-slate-400">{toast.description}</div>}
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-slate-100">{toast.title}</div>
+            {toast.description && <div className="mt-1 text-xs text-slate-400">{toast.description}</div>}
+          </div>
+          <button
+            className="text-xs text-slate-500 transition hover:text-slate-300"
+            onClick={() => remove(toast.id)}
+            aria-label="Dismiss notification"
+          >
+            ×
+          </button>
         </div>
       ))}
     </div>
