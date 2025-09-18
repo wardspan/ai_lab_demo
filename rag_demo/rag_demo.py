@@ -12,7 +12,10 @@ from typing import Dict, List, Tuple
 import httpx
 from dotenv import load_dotenv
 
-from .sanitizer import strip_instruction_tokens
+try:  # pragma: no cover - runtime import flexibility for docker entry
+    from .sanitizer import strip_instruction_tokens
+except ImportError:  # When executed as a script without package context
+    from sanitizer import strip_instruction_tokens
 
 load_dotenv()
 
