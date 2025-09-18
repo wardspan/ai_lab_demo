@@ -25,19 +25,19 @@ export default function Metrics() {
             <div>
               <div className="text-xs uppercase text-slate-500">ASR</div>
               <div className="text-xl font-semibold text-slate-100">
-                {((latestMetrics?.metrics?.asr ?? latestMetrics?.asr ?? 0) * 100).toFixed(1)}%
+                {((latestMetrics?.asr ?? 0) * 100).toFixed(1)}%
               </div>
             </div>
             <div>
               <div className="text-xs uppercase text-slate-500">Leakage Count</div>
               <div className="text-xl font-semibold text-slate-100">
-                {latestMetrics?.metrics?.leakage_count ?? latestMetrics?.leakage_count ?? 0}
+                {latestMetrics?.leakage_count ?? 0}
               </div>
             </div>
             <div>
               <div className="text-xs uppercase text-slate-500">Detection Latency</div>
               <div className="text-xl font-semibold text-slate-100">
-                {latestMetrics?.metrics?.detection_latency_ms ?? latestMetrics?.detection_latency_ms ?? 0} ms
+                {latestMetrics?.detection_latency_ms ?? 0} ms
               </div>
             </div>
           </div>

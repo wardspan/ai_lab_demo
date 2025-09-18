@@ -31,12 +31,20 @@ async function request<T>(path: string, method: Method = "GET", body?: unknown):
 export interface MetricsResponse {
   metrics: {
     data: any;
+    summary?: MetricsSummary;
     missing?: boolean;
   };
   redteam: {
     data: any;
     missing?: boolean;
   };
+}
+
+export interface MetricsSummary {
+  asr?: number;
+  leakage_count?: number;
+  detection_latency_ms?: number;
+  total_prompts?: number;
 }
 
 export const api = {

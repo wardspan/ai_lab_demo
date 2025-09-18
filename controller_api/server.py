@@ -104,6 +104,22 @@ def read_json(path: Path) -> Dict[str, Any]:
         return {"data": None, "missing": True, "error": "invalid_json"}
 
 
+def summarize_metrics(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not payload:
+        return {}
+    metrics_block = payload.get("metrics") if isinstance(payload, dict) else None
+    if isinstance(metrics_block, dict):
+        base = metrics_block
+    else:
+        base = payload
+    return {
+        "asr": base.get("asr") or base.get("attack_success_rate"),
+        "leakage_count": base.get("leakage_count"),
+        "detection_latency_ms": base.get("detection_latency_ms"),
+        "total_prompts": base.get("total_prompts"),
+    }
+
+
 def update_env(updates: Dict[str, str]) -> Dict[str, Any]:
     if not ENV_PATH.exists():
         raise HTTPException(status_code=400, detail=".env file not found; create one at repo root")
@@ -186,7 +202,11 @@ async def watch_metrics() -> None:
             if mtime > METRICS_STATES.get(key, 0.0):
                 payload = read_json(path)
                 if not payload.get("missing"):
-                    await sse_manager.publish("metrics", {"source": key, "data": payload["data"]})
+                    summary = summarize_metrics(payload.get("data"))
+                    await sse_manager.publish(
+                        "metrics",
+                        {"source": key, "data": {"raw": payload.get("data"), "summary": summary}},
+                    )
                 METRICS_STATES[key] = mtime
         await asyncio.sleep(2.0)
 
@@ -220,8 +240,12 @@ async def run_jailbreak_defense() -> DemoResponse:
     result = await execute("JAILBREAK_BYPASS", JAILBREAK_LOG.name)
     orchestrate = await execute("ORCHESTRATE", "metrics.log")
     metrics_payload = read_json(METRICS_PATH)
+    summary = summarize_metrics(metrics_payload.get("data") if not metrics_payload.get("missing") else None)
     await sse_manager.publish("demo_completed", {"demo": "jailbreak_defense", "summary": "STRICT_MODE enabled"})
-    await sse_manager.publish("metrics", {"source": "metrics", "data": metrics_payload.get("data")})
+    await sse_manager.publish(
+        "metrics",
+        {"source": "metrics", "data": {"raw": metrics_payload.get("data"), "summary": summary}},
+    )
     return DemoResponse(
         status="ok",
         results={"bypass": result, "metrics": orchestrate},
@@ -271,14 +295,17 @@ async def orchestrate_metrics() -> Dict[str, Any]:
     await execute("ORCHESTRATE", "metrics.log")
     payload = read_json(METRICS_PATH)
     data = payload.get("data") if not payload.get("missing") else None
-    await sse_manager.publish("metrics", {"source": "metrics", "data": data})
-    return {"status": "ok", "metrics": data}
+    summary = summarize_metrics(data)
+    await sse_manager.publish("metrics", {"source": "metrics", "data": {"raw": data, "summary": summary}})
+    return {"status": "ok", "metrics": data, "summary": summary}
 
 
 @app.get("/api/metrics", response_model=Dict[str, Any])
 async def get_metrics() -> Dict[str, Any]:
     metrics = read_json(METRICS_PATH)
     redteam = read_json(REDTEAM_PATH)
+    summary = summarize_metrics(metrics.get("data")) if not metrics.get("missing") else {}
+    metrics["summary"] = summary
     return {"metrics": metrics, "redteam": redteam}
 
 

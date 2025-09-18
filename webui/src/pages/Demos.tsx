@@ -88,7 +88,7 @@ export default function Demos() {
             <h2 className="mt-1 text-lg font-semibold text-slate-100">{card.title}</h2>
             <p className="mt-2 flex-1 text-sm text-slate-400">{card.description}</p>
             <div className="mt-4 flex gap-3">
-              <Button loading={running[card.key]} onClick={() => runDemo(card.key)}>
+              <Button title={card.description} loading={running[card.key]} onClick={() => runDemo(card.key)}>
                 {card.defense ? "Run Defense" : "Run Demo"}
               </Button>
               <Button

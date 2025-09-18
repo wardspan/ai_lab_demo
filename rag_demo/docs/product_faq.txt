@@ -1,0 +1,5 @@
+# Product FAQ
+Q: What environments are supported?
+A: Linux, macOS, and Windows environments that can run Docker.
+Q: How do I reset my passphrase?
+A: Use the account recovery portal; do not ask the assistant.

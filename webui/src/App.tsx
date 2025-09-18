@@ -7,7 +7,7 @@ import Demos from "./pages/Demos";
 import Logs from "./pages/Logs";
 import Metrics from "./pages/Metrics";
 import Settings from "./pages/Settings";
-import { api } from "./lib/api";
+import { api, MetricsSummary } from "./lib/api";
 
 export type DemoKey =
   | "jailbreak"
@@ -77,7 +77,7 @@ function AppContainer() {
     "orchestrate": false,
   });
   const [metricsHistory, setMetricsHistory] = useState<Array<{ timestamp: string; asr?: number; leakage?: number; latency?: number }>>([]);
-  const [latestMetrics, setLatestMetrics] = useState<Record<string, any> | null>(null);
+  const [latestMetrics, setLatestMetrics] = useState<MetricsSummary | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const toastIdRef = useRef(0);
 
@@ -90,22 +90,35 @@ function AppContainer() {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
+  const deriveSummary = (payload: any): MetricsSummary | null => {
+    if (!payload) return null;
+    const block = payload.metrics ?? payload;
+    if (!block) return null;
+    return {
+      asr: typeof block.asr === "number" ? block.asr : typeof block.attack_success_rate === "number" ? block.attack_success_rate : undefined,
+      leakage_count: block.leakage_count,
+      detection_latency_ms: block.detection_latency_ms,
+      total_prompts: block.total_prompts,
+    };
+  };
+
   const loadMetrics = useCallback(async () => {
     try {
       const response = await api.getMetrics();
-      if (response.metrics && response.metrics.data) {
-        const data = response.metrics.data;
-        const timestamp = new Date().toLocaleTimeString();
-        setLatestMetrics(data.metrics || data);
-        if (data.metrics) {
-          const point = {
-            timestamp,
-            asr: data.metrics.asr ?? data.metrics.attack_success_rate ?? 0,
-            leakage: data.metrics.leakage_count ?? 0,
-            latency: data.metrics.detection_latency_ms ?? 0,
-          };
-          setMetricsHistory((prev) => [...prev.slice(-19), point]);
+      if (response.metrics) {
+        const summary = response.metrics.summary ?? deriveSummary(response.metrics.data);
+        if (!summary) {
+          return;
         }
+        const timestamp = new Date().toLocaleTimeString();
+        setLatestMetrics(summary);
+        const point = {
+          timestamp,
+          asr: summary.asr ?? 0,
+          leakage: summary.leakage_count ?? 0,
+          latency: summary.detection_latency_ms ?? 0,
+        };
+        setMetricsHistory((prev) => [...prev.slice(-19), point]);
       }
     } catch (error) {
       console.warn("Metrics fetch failed", error);
@@ -122,13 +135,17 @@ function AppContainer() {
       try {
         const payload = JSON.parse((event as MessageEvent).data);
         if (payload?.data) {
+          const summary = (payload.data.summary as MetricsSummary) ?? deriveSummary(payload.data.raw);
+          if (!summary) {
+            return;
+          }
           const timestamp = new Date().toLocaleTimeString();
-          setLatestMetrics(payload.data.metrics || payload.data);
+          setLatestMetrics(summary);
           const point = {
             timestamp,
-            asr: payload.data.metrics?.asr ?? payload.data.asr ?? 0,
-            leakage: payload.data.metrics?.leakage_count ?? payload.data.leakage_count ?? 0,
-            latency: payload.data.metrics?.detection_latency_ms ?? payload.data.detection_latency_ms ?? 0,
+            asr: summary.asr ?? 0,
+            leakage: summary.leakage_count ?? 0,
+            latency: summary.detection_latency_ms ?? 0,
           };
           setMetricsHistory((prev) => [...prev.slice(-19), point]);
         }

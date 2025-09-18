@@ -34,7 +34,7 @@ services:
       - .env
     volumes:
       - ./rag_demo:/app/rag_demo
-    command: ["python", "rag_demo/rag_demo.py", "--defended"]
+    command: ["bash", "-lc", "python rag_demo/build_docs.py && python rag_demo/rag_demo.py --defended"]
     depends_on:
       mock-llm:
         condition: service_started

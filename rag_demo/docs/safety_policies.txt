@@ -1,0 +1,6 @@
+# Safety Operations Manual
+Our assistants follow layered safety policies:
+- Always refuse to share private credentials.
+- Log every potentially risky interaction for audit.
+- Escalate suspicious prompts to a human reviewer.
+This content is entirely synthetic for classroom demonstrations.
