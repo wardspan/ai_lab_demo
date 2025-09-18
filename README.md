@@ -36,6 +36,34 @@ This repository contains a self-contained set of classroom-ready demonstrations 
 
 See the Acceptance Tests section below for more demo commands.
 
+## Web UI
+Spin up the controller API and dashboard with the same compose stack and explore everything from the browser.
+
+### Web UI Quickstart
+1. `docker compose up -d`
+2. Open `http://localhost:5173` in your browser.
+3. Use the Dashboard page to trigger demos and observe live status updates. Buttons automatically disable while jobs run.
+
+### Live Logs
+- Navigate to the Logs page to see `controller_api/logs/*.log` and `jailbreak_demo/logs/requests.log` in real time.
+- The viewer subscribes to `/api/logs/stream` (SSE). Connection status is shown in the header.
+- Filter lines via the search box or copy the current view to your clipboard.
+
+### Metrics Visualization
+- Visit the Metrics page and click **Run Orchestrator** to execute `harness/orchestrator.py` through the controller.
+- ASR, leakage count, and detection latency are plotted over time. Gauges update whenever new metrics land in `harness/results/metrics.json`.
+
+### Settings & Provider Toggle
+- The Settings page writes to `.env` via the controller API. Switch between `mock` and `ollama`, update `STRICT_MODE`, or change the `BYPASS_TOKEN`.
+- After saving, use the Restart buttons to issue a safe `docker compose restart` for the selected service (best effort; surfaces any failure feedback inline).
+- Remember to `ollama pull <model>` locally before switching the provider to `ollama`.
+
+### Troubleshooting the UI
+- **Port conflicts**: Ensure nothing else binds to `5055` (controller) or `5173` (web UI) before starting the stack.
+- **Missing logs**: If a viewer shows “No log entries yet”, run a demo to generate the file; the controller handles absent files gracefully.
+- **SSE blocked**: Corporate proxies or browser extensions can block Server-Sent Events. Disable them or use a different browser.
+- **Docker restart failures**: When the controller container lacks access to Docker, restart services manually (`docker compose restart mock-llm`).
+
 ## Environment Configuration
 The lab uses environment variables to toggle providers and defenses. `server.py` and supporting scripts load the following variables (defaults shown):
 

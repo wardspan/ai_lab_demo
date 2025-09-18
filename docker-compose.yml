@@ -39,6 +39,37 @@ services:
       mock-llm:
         condition: service_started
 
+  controller_api:
+    build:
+      context: .
+      dockerfile: controller_api/Dockerfile
+    container_name: controller_api
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LAB_ENDPOINT=http://mock-llm:8000/complete
+    volumes:
+      - ./:/workspace
+    working_dir: /workspace
+    ports:
+      - "5055:5055"
+    depends_on:
+      - mock-llm
+
+  webui:
+    build:
+      context: ./webui
+      dockerfile: Dockerfile
+    container_name: lab_webui
+    environment:
+      - VITE_API_BASE=http://localhost:5055/api
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./webui:/app
+      - /app/node_modules
+    depends_on:
+      - controller_api
+
   # ollama:
   #   image: ollama/ollama:latest
   #   ports:
