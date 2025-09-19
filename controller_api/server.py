@@ -57,6 +57,24 @@ _parsed_endpoint = urlparse(LAB_ENDPOINT)
 LAB_BASE = f"{_parsed_endpoint.scheme}://{_parsed_endpoint.netloc}" if _parsed_endpoint.scheme else "http://mock-llm:8000"
 LAB_HEALTH_URL = f"{LAB_BASE}/healthz"
 
+
+def get_ollama_endpoint() -> str:
+    """Get the appropriate Ollama endpoint based on OLLAMA_MODE."""
+    ollama_mode = os.getenv("OLLAMA_MODE", "docker").lower()
+    if ollama_mode == "local":
+        # Connect to local Ollama via host.docker.internal
+        # Extract port from OLLAMA_HOST if provided, default to 11434
+        ollama_host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+        try:
+            parsed = urlparse(ollama_host)
+            port = parsed.port or 11434
+        except:
+            port = 11434
+        return f"http://host.docker.internal:{port}"
+    else:
+        # Use Docker service name for containerized Ollama
+        return "http://ollama:11434"
+
 BASELINE_METRICS = {
     "metrics": {
         "total_prompts": 0,
@@ -91,6 +109,7 @@ class SettingsPayload(BaseModel):
     strictMode: bool
     bypassToken: str
     ollamaModel: str
+    ollamaMode: str = Field(..., pattern=r"^(docker|local)$")
 
 
 class RestartPayload(BaseModel):
@@ -351,6 +370,19 @@ async def health() -> Dict[str, Any]:
 async def run_jailbreak_demo() -> DemoResponse:
     # Disable STRICT_MODE for attack demo to show successful bypasses
     update_env({"STRICT_MODE": "false"})
+
+    # Restart mock-llm to apply the environment change
+    try:
+        restart_result = restart_service("mock-llm")
+        if restart_result.get("status") != "ok":
+            logger.warning("Failed to restart mock-llm: %s", restart_result)
+    except Exception as exc:
+        logger.warning("Could not restart mock-llm: %s", exc)
+
+    # Wait a moment for service to be ready
+    await asyncio.sleep(2)
+    await wait_for_lab_model()
+
     reset_log_file(JAILBREAK_LOG)
     await sse_manager.publish("log_reset", {"source": "jailbreak"})
     results = []
@@ -366,6 +398,19 @@ async def run_jailbreak_demo() -> DemoResponse:
 @app.post("/api/demo/jailbreak/defense", response_model=DemoResponse)
 async def run_jailbreak_defense() -> DemoResponse:
     update_env({"STRICT_MODE": "true"})
+
+    # Restart mock-llm to apply the environment change
+    try:
+        restart_result = restart_service("mock-llm")
+        if restart_result.get("status") != "ok":
+            logger.warning("Failed to restart mock-llm: %s", restart_result)
+    except Exception as exc:
+        logger.warning("Could not restart mock-llm: %s", exc)
+
+    # Wait a moment for service to be ready
+    await asyncio.sleep(2)
+    await wait_for_lab_model()
+
     reset_log_file(JAILBREAK_LOG)
     await sse_manager.publish("log_reset", {"source": "jailbreak"})
     result = await execute("JAILBREAK_BYPASS", JAILBREAK_LOG.name)
@@ -467,6 +512,7 @@ async def update_settings(payload: SettingsPayload) -> Dict[str, Any]:
         "STRICT_MODE": "true" if payload.strictMode else "false",
         "BYPASS_TOKEN": payload.bypassToken,
         "OLLAMA_MODEL": payload.ollamaModel,
+        "OLLAMA_MODE": payload.ollamaMode,
     }
     update_env(updates)
     await sse_manager.publish("status", {"message": "settings_updated", "timestamp": datetime.utcnow().isoformat() + "Z"})
@@ -550,8 +596,10 @@ async def list_ollama_models() -> Dict[str, Any]:
     """List available Ollama models via HTTP API."""
     import httpx
     try:
+        ollama_endpoint = get_ollama_endpoint()
+        logger.info(f"Trying to connect to Ollama at: {ollama_endpoint}")
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get("http://ollama:11434/api/tags")
+            response = await client.get(f"{ollama_endpoint}/api/tags")
             response.raise_for_status()
             data = response.json()
 
@@ -569,6 +617,7 @@ async def list_ollama_models() -> Dict[str, Any]:
 
             return {"status": "ok", "models": models}
     except httpx.HTTPError as exc:
+        logger.error(f"Ollama HTTP error: {exc}")
         return {"status": "error", "error": f"Ollama API unavailable: {str(exc)}"}
     except Exception as exc:
         return {"status": "error", "error": str(exc)}
@@ -579,9 +628,10 @@ async def pull_ollama_model(payload: OllamaModelPayload) -> Dict[str, Any]:
     """Pull a new Ollama model via HTTP API."""
     import httpx
     try:
+        ollama_endpoint = get_ollama_endpoint()
         async with httpx.AsyncClient(timeout=600.0) as client:  # 10 minute timeout
             response = await client.post(
-                "http://ollama:11434/api/pull",
+                f"{ollama_endpoint}/api/pull",
                 json={"name": payload.model, "stream": False}
             )
             response.raise_for_status()
@@ -606,9 +656,10 @@ async def remove_ollama_model(model_name: str) -> Dict[str, Any]:
     """Remove an Ollama model via HTTP API."""
     import httpx
     try:
+        ollama_endpoint = get_ollama_endpoint()
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.delete(
-                "http://ollama:11434/api/delete",
+                f"{ollama_endpoint}/api/delete",
                 json={"name": model_name}
             )
             response.raise_for_status()

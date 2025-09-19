@@ -42,6 +42,8 @@ services:
       context: .
       dockerfile: controller_api/Dockerfile
     container_name: controller_api
+    env_file:
+      - .env
     environment:
       - PYTHONUNBUFFERED=1
       - LAB_ENDPOINT=http://mock-llm:8000/complete
@@ -52,6 +54,8 @@ services:
     working_dir: /workspace
     ports:
       - "5055:5055"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - mock-llm
 
@@ -79,7 +83,11 @@ services:
     restart: unless-stopped
     environment:
       - OLLAMA_HOST=0.0.0.0:11434
+    profiles:
+      - ollama-docker
     # Note: Host must accept the model license when pulling models
+    # Use 'docker compose --profile ollama-docker up -d' to include this service
+    # Or set OLLAMA_MODE=local to use your local installation instead
 
 volumes:
   ollama-data:

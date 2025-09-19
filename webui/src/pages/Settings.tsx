@@ -16,6 +16,7 @@ interface SettingsState {
   strictMode: boolean;
   bypassToken: string;
   ollamaModel: string;
+  ollamaMode: "docker" | "local";
 }
 
 const defaultState: SettingsState = {
@@ -23,6 +24,7 @@ const defaultState: SettingsState = {
   strictMode: true,
   bypassToken: "roleplay",
   ollamaModel: "llama3:8b",
+  ollamaMode: "docker",
 };
 
 export default function Settings() {
@@ -46,6 +48,7 @@ export default function Settings() {
           strictMode: (response.STRICT_MODE?.toLowerCase?.() ?? "true") === "true",
           bypassToken: response.BYPASS_TOKEN || "roleplay",
           ollamaModel: response.OLLAMA_MODEL || "llama3:8b",
+          ollamaMode: (response.OLLAMA_MODE as SettingsState["ollamaMode"]) || "docker",
         });
       } catch (error) {
         console.warn("Failed to load settings", error);
@@ -81,6 +84,7 @@ export default function Settings() {
         strictMode: state.strictMode,
         bypassToken: state.bypassToken,
         ollamaModel: state.ollamaModel,
+        ollamaMode: state.ollamaMode,
       });
       pushToast({ title: "Settings saved", description: "Restart mock-llm to apply.", variant: "success" });
       setRestartMessage("Settings updated. Restart mock-llm to apply changes.");
@@ -169,6 +173,35 @@ export default function Settings() {
               Ollama
             </Button>
           </div>
+
+          {state.provider === "ollama" && (
+            <>
+              <label className="text-sm font-semibold text-slate-200">Ollama Connection</label>
+              <div className="flex flex-wrap gap-3 text-sm">
+                <Button
+                  type="button"
+                  variant={state.ollamaMode === "docker" ? "primary" : "secondary"}
+                  onClick={() => setState((prev) => ({ ...prev, ollamaMode: "docker" }))}
+                >
+                  🐳 Docker Container
+                </Button>
+                <Button
+                  type="button"
+                  variant={state.ollamaMode === "local" ? "primary" : "secondary"}
+                  onClick={() => setState((prev) => ({ ...prev, ollamaMode: "local" }))}
+                >
+                  🖥️ Local Installation
+                </Button>
+              </div>
+              <p className="text-xs text-slate-400">
+                {state.ollamaMode === "docker"
+                  ? "Uses the containerized Ollama service (default port 11434)"
+                  : "Connects to your local Ollama installation via host.docker.internal"
+                }
+              </p>
+            </>
+          )}
+
           <Toggle
             label="Strict Mode"
             checked={state.strictMode}
