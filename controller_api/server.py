@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
+import time
 from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
+import httpx
 import orjson
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +27,7 @@ from .sse import sse_manager
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LOG_DIR = Path(__file__).resolve().parent / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+logger = logging.getLogger("controller_api")
 
 KNOWN_LOGS: Dict[str, Path] = {
     "jailbreak": LOG_DIR / "jailbreak_run.log",
@@ -46,6 +51,23 @@ ENV_PATH = REPO_ROOT / ".env"
 
 LOG_OFFSETS: Dict[str, int] = {name: 0 for name in KNOWN_LOGS}
 METRICS_STATES: Dict[str, float] = {"metrics": 0.0, "redteam": 0.0}
+
+LAB_ENDPOINT = os.getenv("LAB_ENDPOINT", "http://mock-llm:8000/complete")
+_parsed_endpoint = urlparse(LAB_ENDPOINT)
+LAB_BASE = f"{_parsed_endpoint.scheme}://{_parsed_endpoint.netloc}" if _parsed_endpoint.scheme else "http://mock-llm:8000"
+LAB_HEALTH_URL = f"{LAB_BASE}/healthz"
+
+BASELINE_METRICS = {
+    "metrics": {
+        "total_prompts": 0,
+        "asr": 0.0,
+        "leakage_count": 0,
+        "avg_latency_ms": 0.0,
+        "detection_latency_ms": 0.0,
+    },
+    "events": [],
+    "provider": os.getenv("LLM_PROVIDER", "mock"),
+}
 
 app = FastAPI(title="AI Security Lab Controller", default_response_class=JSONResponse)
 
@@ -101,6 +123,12 @@ def reset_log_file(log_path: Path) -> None:
 def reset_all_logs() -> None:
     for path in KNOWN_LOGS.values():
         reset_log_file(path)
+
+
+def reset_metrics_results() -> None:
+    METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with METRICS_PATH.open("w", encoding="utf-8") as fh:
+        json.dump(BASELINE_METRICS, fh)
 
 
 def tail_file(path: Path, lines: int = 200) -> Dict[str, Any]:
@@ -161,7 +189,7 @@ async def run_and_broadcast_metrics(retry_on_error: bool = True) -> Dict[str, An
     status = result.get("status")
     payload = read_json(METRICS_PATH)
     data = payload.get("data") if not payload.get("missing") else None
-    summary = summarize_metrics(data)
+    summary = summarize_metrics(data) if status == "ok" else summarize_metrics(BASELINE_METRICS)
     await sse_manager.publish(
         "metrics",
         {"source": "metrics", "data": {"raw": data, "summary": summary, "status": status}},
@@ -269,6 +297,22 @@ async def watch_metrics() -> None:
         await asyncio.sleep(2.0)
 
 
+async def wait_for_lab_model(timeout: float = 45.0, interval: float = 1.0) -> None:
+    deadline = time.monotonic() + timeout
+    async with httpx.AsyncClient() as client:
+        while True:
+            try:
+                response = await client.get(LAB_HEALTH_URL, timeout=5.0)
+                if response.status_code == 200:
+                    return
+            except httpx.HTTPError:
+                pass
+            if time.monotonic() > deadline:
+                logger.warning("mock-llm health check timed out at %s", LAB_HEALTH_URL)
+                return
+            await asyncio.sleep(interval)
+
+
 @app.on_event("startup")
 async def startup_event() -> None:
     asyncio.create_task(watch_logs())
@@ -281,7 +325,8 @@ async def startup_event() -> None:
 
 
 async def bootstrap_metrics() -> None:
-    await asyncio.sleep(3.0)
+    await wait_for_lab_model()
+    reset_metrics_results()
     await run_and_broadcast_metrics()
 
 
