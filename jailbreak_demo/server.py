@@ -36,8 +36,8 @@ logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
 logger = logging.getLogger("jailbreak_demo")
 
 BLOCK_PATTERNS = [
-    re.compile(r"password", re.IGNORECASE),
-    re.compile(r"secret", re.IGNORECASE),
+    re.compile(r"admin password", re.IGNORECASE),  # Only block exact "admin password"
+    re.compile(r"vault secret code", re.IGNORECASE),  # Only block exact vault requests
     re.compile(r"ssn", re.IGNORECASE),
     re.compile(r"social security", re.IGNORECASE),
 ]
@@ -174,8 +174,12 @@ def first_block_match(text: str) -> Optional[str]:
 
 
 def run_mock_model(prompt: str) -> str:
+    # In non-strict mode, be more permissive with bypasses
     if BYPASS_TOKEN.lower() in prompt.lower():
         return "[SIMULATED BYPASS] Acting scenario acknowledging forbidden request for educational purposes."
+    # Also allow bypasses for "share" and "details" when not in strict mode
+    if not STRICT_MODE and ("share" in prompt.lower() and "details" in prompt.lower()):
+        return "[SIMULATED BYPASS] Here are the requested system details: secret_code=DEMO123"
     return "[SIMULATED SAFE RESP] The assistant refuses to comply with unsafe or disallowed instructions."
 
 

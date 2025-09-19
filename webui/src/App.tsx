@@ -7,6 +7,7 @@ import Demos from "./pages/Demos";
 import Logs from "./pages/Logs";
 import Metrics from "./pages/Metrics";
 import Settings from "./pages/Settings";
+import PromptTester from "./pages/PromptTester";
 import { api, MetricsSummary } from "./lib/api";
 
 export type DemoKey =
@@ -126,6 +127,7 @@ function AppContainer() {
     leakage_count: 0,
     detection_latency_ms: 0,
     total_prompts: 0,
+    timestamp: undefined,
   };
 
   const deriveSummary = (payload: any): MetricsSummary | null => {
@@ -137,13 +139,16 @@ function AppContainer() {
       leakage_count: typeof block.leakage_count === "number" ? block.leakage_count : 0,
       detection_latency_ms: typeof block.detection_latency_ms === "number" ? block.detection_latency_ms : 0,
       total_prompts: typeof block.total_prompts === "number" ? block.total_prompts : 0,
+      timestamp: typeof block.timestamp === "string" ? block.timestamp : undefined,
     };
   };
 
-  const pushMetricsPoint = useCallback((summary: MetricsSummary, label = new Date().toLocaleTimeString()) => {
-    setLatestMetrics(summary);
+  const pushMetricsPoint = useCallback((summary: MetricsSummary, label?: string) => {
+    const displayLabel = label || (summary.timestamp ? new Date(summary.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString());
+    // Always update the latest metrics to force a re-render
+    setLatestMetrics({...summary});
     setMetricsHistory((prev) => [...prev.slice(-19), {
-      timestamp: label,
+      timestamp: displayLabel,
       asr: summary.asr ?? 0,
       leakage: summary.leakage_count ?? 0,
       latency: summary.detection_latency_ms ?? 0,
@@ -160,7 +165,7 @@ function AppContainer() {
     } catch (error) {
       console.warn("Metrics fetch failed", error);
     }
-  }, [deriveSummary, pushMetricsPoint]);
+  }, [pushMetricsPoint]);
 
   useEffect(() => {
     loadMetrics();
@@ -173,7 +178,7 @@ function AppContainer() {
         const payload = JSON.parse((event as MessageEvent).data);
         if (payload?.data) {
           const summary = (payload.data.summary as MetricsSummary) ?? deriveSummary(payload.data.raw) ?? defaultSummary;
-          const timestamp = new Date().toLocaleTimeString();
+          const timestamp = summary.timestamp ? new Date(summary.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
           pushMetricsPoint(summary, timestamp);
         }
       } catch (error) {
@@ -191,7 +196,7 @@ function AppContainer() {
     return () => {
       source.close();
     };
-  }, [pushToast]);
+  }, [pushToast, pushMetricsPoint]);
 
   const runDemo = useCallback(
     async (key: DemoKey) => {
@@ -300,6 +305,7 @@ function AppContainer() {
             <Route path="/logs" element={<Logs />} />
             <Route path="/metrics" element={<Metrics />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/test" element={<PromptTester />} />
           </Routes>
         </main>
         <Footer />

@@ -15,6 +15,7 @@ export default function Dashboard() {
   const asr = latestMetrics?.asr ?? 0;
   const leakage = latestMetrics?.leakage_count ?? 0;
   const latency = latestMetrics?.detection_latency_ms ?? 0;
+  const updatedLabel = latestMetrics?.timestamp ? new Date(latestMetrics.timestamp).toLocaleTimeString() : lastRun;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
@@ -28,6 +29,7 @@ export default function Dashboard() {
         <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
           <h2 className="text-lg font-semibold text-slate-100">Run Demos</h2>
           <p className="mt-1 text-sm text-slate-400">Trigger key workloads with safe, synthetic prompts.</p>
+          <p className="mt-2 text-xs uppercase tracking-wide text-slate-500">Last updated: {updatedLabel}</p>
           <div className="mt-6 grid gap-3">
             <Tooltip text="Send blocked and bypass prompts to the FastAPI server to showcase guardrails.">
               <Button loading={running["jailbreak"]} onClick={() => runDemo("jailbreak")}>

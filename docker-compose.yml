@@ -70,14 +70,16 @@ services:
     depends_on:
       - controller_api
 
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   ports:
-  #     - "11434:11434"
-  #   volumes:
-  #     - ollama-data:/root/.ollama
-  #   restart: unless-stopped
-  #   # Uncomment to run Ollama inside the stack. Host must accept the model license.
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    # Note: Host must accept the model license when pulling models
 
 volumes:
   ollama-data:

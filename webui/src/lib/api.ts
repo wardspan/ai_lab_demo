@@ -45,6 +45,7 @@ export interface MetricsSummary {
   leakage_count?: number;
   detection_latency_ms?: number;
   total_prompts?: number;
+  timestamp?: string;
 }
 
 export const api = {
@@ -61,6 +62,7 @@ export const api = {
   restartService: (service: string) => request("/services/restart", "POST", { service }),
   clearLog: (name: string) => request("/logs/clear", "POST", { name }),
   tailLog: (name: string, lines = 200) => request(`/logs/tail?name=${encodeURIComponent(name)}&lines=${lines}`),
+  testPrompt: (payload: { text: string; intent?: string; meta?: any }) => request("/test/prompt", "POST", payload),
 };
 
 export type KnownLog =

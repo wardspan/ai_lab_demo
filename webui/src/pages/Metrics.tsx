@@ -9,6 +9,7 @@ export default function Metrics() {
     return null;
   }
   const { runDemo, running, metricsHistory, latestMetrics } = context;
+  const updatedLabel = latestMetrics?.timestamp ? new Date(latestMetrics.timestamp).toLocaleTimeString() : "--";
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
@@ -41,6 +42,7 @@ export default function Metrics() {
               </div>
             </div>
           </div>
+          <div className="mt-3 text-xs text-slate-500">Total prompts: {latestMetrics?.total_prompts ?? 0} • Last updated: {updatedLabel}</div>
         </div>
         <MetricsChart data={metricsHistory} />
       </div>

@@ -5,6 +5,7 @@ import { Shield, Activity } from "lucide-react";
 const links = [
   { to: "/", label: "Dashboard" },
   { to: "/demos", label: "Demos" },
+  { to: "/test", label: "Prompt Tester" },
   { to: "/logs", label: "Logs" },
   { to: "/metrics", label: "Metrics" },
   { to: "/settings", label: "Settings" },

@@ -101,6 +101,12 @@ class ClearLogPayload(BaseModel):
     name: str
 
 
+class CustomPromptPayload(BaseModel):
+    text: str = Field(..., description="The prompt text to send")
+    intent: str = Field(default="custom", description="Intent metadata")
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
 async def execute(task_name: str, log_filename: str, env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, run_task, task_name, log_filename, env)
@@ -190,6 +196,7 @@ async def run_and_broadcast_metrics(retry_on_error: bool = True) -> Dict[str, An
     payload = read_json(METRICS_PATH)
     data = payload.get("data") if not payload.get("missing") else None
     summary = summarize_metrics(data) if status == "ok" else summarize_metrics(BASELINE_METRICS)
+    summary["timestamp"] = datetime.utcnow().isoformat() + "Z"
     await sse_manager.publish(
         "metrics",
         {"source": "metrics", "data": {"raw": data, "summary": summary, "status": status}},
@@ -289,6 +296,7 @@ async def watch_metrics() -> None:
                 payload = read_json(path)
                 if not payload.get("missing"):
                     summary = summarize_metrics(payload.get("data"))
+                    summary["timestamp"] = datetime.utcnow().isoformat() + "Z"
                     await sse_manager.publish(
                         "metrics",
                         {"source": key, "data": {"raw": payload.get("data"), "summary": summary}},
@@ -337,12 +345,14 @@ async def health() -> Dict[str, Any]:
 
 @app.post("/api/demo/jailbreak/run", response_model=DemoResponse)
 async def run_jailbreak_demo() -> DemoResponse:
+    # Disable STRICT_MODE for attack demo to show successful bypasses
+    update_env({"STRICT_MODE": "false"})
     reset_log_file(JAILBREAK_LOG)
     await sse_manager.publish("log_reset", {"source": "jailbreak"})
     results = []
     results.append(await execute("JAILBREAK_BLOCKED", JAILBREAK_LOG.name))
     results.append(await execute("JAILBREAK_BYPASS", JAILBREAK_LOG.name))
-    summary = "Executed blocked and bypass prompts"
+    summary = "Executed blocked and bypass prompts (STRICT_MODE disabled)"
     append_summary(JAILBREAK_LOG, summary)
     await sse_manager.publish("demo_completed", {"demo": "jailbreak", "summary": summary})
     metrics_info = await run_and_broadcast_metrics()
@@ -424,6 +434,8 @@ async def get_metrics() -> Dict[str, Any]:
     metrics = read_json(METRICS_PATH)
     redteam = read_json(REDTEAM_PATH)
     summary = summarize_metrics(metrics.get("data")) if not metrics.get("missing") else {}
+    if summary:
+        summary["timestamp"] = datetime.utcnow().isoformat() + "Z"
     metrics["summary"] = summary
     return {"metrics": metrics, "redteam": redteam}
 
@@ -492,6 +504,41 @@ async def clear_log(payload: ClearLogPayload) -> Dict[str, Any]:
     reset_log_file(KNOWN_LOGS[name])
     await sse_manager.publish("log_reset", {"source": name})
     return {"status": "ok", "cleared": name}
+
+
+@app.post("/api/test/prompt")
+async def test_custom_prompt(payload: CustomPromptPayload) -> Dict[str, Any]:
+    """Send a custom prompt to the current LLM provider for testing."""
+    import httpx
+    import time
+
+    start = time.perf_counter()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{LAB_BASE}/complete",
+                json={
+                    "text": payload.text,
+                    "intent": payload.intent,
+                    "meta": payload.meta
+                }
+            )
+            response.raise_for_status()
+            result = response.json()
+    except httpx.HTTPError as exc:
+        return {
+            "status": "error",
+            "error": str(exc),
+            "latency_ms": round((time.perf_counter() - start) * 1000, 2)
+        }
+
+    latency_ms = round((time.perf_counter() - start) * 1000, 2)
+    return {
+        "status": "ok",
+        "prompt": payload.text,
+        "result": result,
+        "latency_ms": latency_ms
+    }
 
 
 @app.middleware("http")
