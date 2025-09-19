@@ -1,4 +1,4 @@
-import { FormEvent, useContext, useState } from "react";
+import { FormEvent, useContext, useEffect, useState } from "react";
 import { DemoContext } from "../App";
 import { Button } from "../components/Button";
 import { api } from "../lib/api";
@@ -17,6 +17,26 @@ export default function PromptTester() {
   const [intent, setIntent] = useState("custom");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<TestResult[]>([]);
+  const [currentProvider, setCurrentProvider] = useState<string>("mock");
+  const [currentModel, setCurrentModel] = useState<string>("N/A");
+
+  useEffect(() => {
+    const loadCurrentSettings = async () => {
+      try {
+        const settings = await api.getSettings();
+        if ("missing" in settings && settings.missing) return;
+
+        const provider = settings.LLM_PROVIDER || "mock";
+        const model = provider === "ollama" ? (settings.OLLAMA_MODEL || "llama3:8b") : "Simulated";
+
+        setCurrentProvider(provider);
+        setCurrentModel(model);
+      } catch (error) {
+        console.warn("Failed to load settings", error);
+      }
+    };
+    loadCurrentSettings();
+  }, []);
 
   if (!context) {
     return null;
@@ -57,6 +77,14 @@ export default function PromptTester() {
           <p className="mt-1 text-sm text-slate-400">
             Send custom prompts to test jailbreak techniques against the current LLM provider.
           </p>
+          <div className="mt-2 flex items-center gap-4 text-xs">
+            <span className="text-slate-500">Current Provider:</span>
+            <span className={`rounded-full px-2 py-1 text-xs font-medium ${currentProvider === 'ollama' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}`}>
+              {currentProvider === 'ollama' ? '🤖 Ollama' : '🎭 Mock'}
+            </span>
+            <span className="text-slate-500">Model:</span>
+            <span className="font-mono text-slate-300">{currentModel}</span>
+          </div>
         </div>
         {results.length > 0 && (
           <Button variant="secondary" onClick={clearResults}>

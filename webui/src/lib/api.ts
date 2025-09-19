@@ -1,6 +1,6 @@
 const API_BASE = import.meta.env.VITE_API_BASE || __API_BASE__ || "http://localhost:5055/api";
 
-type Method = "GET" | "POST";
+type Method = "GET" | "POST" | "DELETE";
 
 async function request<T>(path: string, method: Method = "GET", body?: unknown): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -63,6 +63,9 @@ export const api = {
   clearLog: (name: string) => request("/logs/clear", "POST", { name }),
   tailLog: (name: string, lines = 200) => request(`/logs/tail?name=${encodeURIComponent(name)}&lines=${lines}`),
   testPrompt: (payload: { text: string; intent?: string; meta?: any }) => request("/test/prompt", "POST", payload),
+  listOllamaModels: () => request("/ollama/models"),
+  pullOllamaModel: (model: string) => request("/ollama/pull", "POST", { model }),
+  removeOllamaModel: (model: string) => request(`/ollama/models/${encodeURIComponent(model)}`, "DELETE"),
 };
 
 export type KnownLog =

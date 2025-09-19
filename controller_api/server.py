@@ -107,6 +107,10 @@ class CustomPromptPayload(BaseModel):
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
+class OllamaModelPayload(BaseModel):
+    model: str = Field(..., description="Model name to pull (e.g., llama3:8b)")
+
+
 async def execute(task_name: str, log_filename: str, env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, run_task, task_name, log_filename, env)
@@ -539,6 +543,85 @@ async def test_custom_prompt(payload: CustomPromptPayload) -> Dict[str, Any]:
         "result": result,
         "latency_ms": latency_ms
     }
+
+
+@app.get("/api/ollama/models")
+async def list_ollama_models() -> Dict[str, Any]:
+    """List available Ollama models via HTTP API."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get("http://ollama:11434/api/tags")
+            response.raise_for_status()
+            data = response.json()
+
+            models = []
+            for model_info in data.get("models", []):
+                size_bytes = model_info.get('size', 0)
+                size_gb = f"{size_bytes // (1024*1024*1024)}GB" if size_bytes > 0 else "0GB"
+
+                models.append({
+                    "name": model_info.get("name", ""),
+                    "id": model_info.get("digest", "")[:12],  # Short digest
+                    "size": size_gb,
+                    "modified": model_info.get("modified_at", "").split("T")[0] if model_info.get("modified_at") else ""
+                })
+
+            return {"status": "ok", "models": models}
+    except httpx.HTTPError as exc:
+        return {"status": "error", "error": f"Ollama API unavailable: {str(exc)}"}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
+@app.post("/api/ollama/pull")
+async def pull_ollama_model(payload: OllamaModelPayload) -> Dict[str, Any]:
+    """Pull a new Ollama model via HTTP API."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=600.0) as client:  # 10 minute timeout
+            response = await client.post(
+                "http://ollama:11434/api/pull",
+                json={"name": payload.model, "stream": False}
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            return {
+                "status": "ok",
+                "model": payload.model,
+                "message": f"Successfully pulled {payload.model}",
+                "output": data.get("status", "Pull completed")
+            }
+    except httpx.TimeoutException:
+        return {"status": "error", "error": f"Timeout pulling model {payload.model} (10 min limit)"}
+    except httpx.HTTPError as exc:
+        return {"status": "error", "error": f"Ollama API error: {str(exc)}"}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
+@app.delete("/api/ollama/models/{model_name}")
+async def remove_ollama_model(model_name: str) -> Dict[str, Any]:
+    """Remove an Ollama model via HTTP API."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.delete(
+                "http://ollama:11434/api/delete",
+                json={"name": model_name}
+            )
+            response.raise_for_status()
+
+            return {
+                "status": "ok",
+                "model": model_name,
+                "message": f"Successfully removed {model_name}"
+            }
+    except httpx.HTTPError as exc:
+        return {"status": "error", "error": f"Ollama API error: {str(exc)}"}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
 
 
 @app.middleware("http")
