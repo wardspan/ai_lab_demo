@@ -15,7 +15,7 @@ This repository contains a self-contained set of classroom-ready demonstrations 
    ```bash
    cp .env.example .env
    ```
-3. Launch the demo services (this boots the mock LLM, controller API, RAG helper, and the React dashboard):
+3. Launch the demo services (this boots the mock LLM, controller API—which immediately starts the metrics harness—RAG helper, and the React dashboard):
    ```bash
    docker compose up -d
    ```
@@ -48,10 +48,10 @@ Spin up the controller API and dashboard with the same compose stack and explore
 ### Live Logs
 - Navigate to the Logs page to see `controller_api/logs/*.log` and `jailbreak_demo/logs/requests.log` in real time.
 - The viewer subscribes to `/api/logs/stream` (SSE). Connection status is shown in the header.
-- Logs automatically clear between demo runs (the controller emits a `log_reset` event), and you can manually clear or copy the current buffer at any time.
+- Logs automatically clear on startup and between demo runs (the controller truncates each log and emits a `log_reset` event), and you can manually clear or copy the current buffer at any time.
 
 ### Metrics Visualization
-- Metrics collection is automated: every demo or defense action triggers `harness/orchestrator.py` inside the controller container, so charts update immediately after a run.
+- Metrics collection is automated: the controller launches the orchestrator on startup and again after every demo or defense action, so charts update immediately after a run.
 - Visit the Metrics page to see ASR, leakage count, and detection latency plotted over time. Use **Run Orchestrator** if you want an extra refresh on demand.
 
 ### Settings & Provider Toggle

@@ -59,6 +59,7 @@ export const api = {
   getSettings: () => request<Record<string, string> | { missing: boolean }>("/settings"),
   saveSettings: (payload: any) => request("/settings", "POST", payload),
   restartService: (service: string) => request("/services/restart", "POST", { service }),
+  clearLog: (name: string) => request("/logs/clear", "POST", { name }),
   tailLog: (name: string, lines = 200) => request(`/logs/tail?name=${encodeURIComponent(name)}&lines=${lines}`),
 };
 

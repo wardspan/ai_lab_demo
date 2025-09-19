@@ -24,21 +24,21 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 LOG_DIR = Path(__file__).resolve().parent / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-JAILBREAK_LOG = LOG_DIR / "jailbreak_run.log"
-RAG_INJECTION_LOG = LOG_DIR / "rag_injection.log"
-RAG_DEFENSE_LOG = LOG_DIR / "rag_defense.log"
-POISONING_LOG = LOG_DIR / "poisoning.log"
-REDACTION_LOG = LOG_DIR / "redaction.log"
-
 KNOWN_LOGS: Dict[str, Path] = {
-    "jailbreak": JAILBREAK_LOG,
-    "rag_injection": RAG_INJECTION_LOG,
-    "rag_defense": RAG_DEFENSE_LOG,
-    "poisoning": POISONING_LOG,
-    "redaction": REDACTION_LOG,
-    "requests": REPO_ROOT / "jailbreak_demo" / "logs" / "requests.log",
+    "jailbreak": LOG_DIR / "jailbreak_run.log",
+    "rag_injection": LOG_DIR / "rag_injection.log",
+    "rag_defense": LOG_DIR / "rag_defense.log",
+    "poisoning": LOG_DIR / "poisoning.log",
+    "redaction": LOG_DIR / "redaction.log",
     "metrics": LOG_DIR / "metrics.log",
+    "requests": REPO_ROOT / "jailbreak_demo" / "logs" / "requests.log",
 }
+
+JAILBREAK_LOG = KNOWN_LOGS["jailbreak"]
+RAG_INJECTION_LOG = KNOWN_LOGS["rag_injection"]
+RAG_DEFENSE_LOG = KNOWN_LOGS["rag_defense"]
+POISONING_LOG = KNOWN_LOGS["poisoning"]
+REDACTION_LOG = KNOWN_LOGS["redaction"]
 
 METRICS_PATH = REPO_ROOT / "harness" / "results" / "metrics.json"
 REDTEAM_PATH = REPO_ROOT / "harness" / "results" / "redteam_results.json"
@@ -75,6 +75,10 @@ class RestartPayload(BaseModel):
     service: str
 
 
+class ClearLogPayload(BaseModel):
+    name: str
+
+
 async def execute(task_name: str, log_filename: str, env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, run_task, task_name, log_filename, env)
@@ -83,6 +87,20 @@ async def execute(task_name: str, log_filename: str, env: Optional[Dict[str, str
 def append_summary(log_path: Path, summary: str) -> None:
     with log_path.open("a", encoding="utf-8") as fh:
         fh.write(f"\n[SUMMARY] {summary}\n")
+
+
+def reset_log_file(log_path: Path) -> None:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("w", encoding="utf-8"):
+        pass
+    for name, path in KNOWN_LOGS.items():
+        if path == log_path:
+            LOG_OFFSETS[name] = 0
+
+
+def reset_all_logs() -> None:
+    for path in KNOWN_LOGS.values():
+        reset_log_file(path)
 
 
 def tail_file(path: Path, lines: int = 200) -> Dict[str, Any]:
@@ -112,15 +130,33 @@ def summarize_metrics(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         base = metrics_block
     else:
         base = payload
+    def safe_float(value: Any) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def safe_int(value: Any) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+
+    asr = base.get("asr", base.get("attack_success_rate"))
+    leakage = base.get("leakage_count")
+    latency = base.get("detection_latency_ms")
+    total = base.get("total_prompts")
+
     return {
-        "asr": base.get("asr") or base.get("attack_success_rate"),
-        "leakage_count": base.get("leakage_count"),
-        "detection_latency_ms": base.get("detection_latency_ms"),
-        "total_prompts": base.get("total_prompts"),
+        "asr": safe_float(asr),
+        "leakage_count": safe_int(leakage),
+        "detection_latency_ms": safe_float(latency),
+        "total_prompts": safe_int(total),
     }
 
 
-async def run_and_broadcast_metrics() -> Dict[str, Any]:
+async def run_and_broadcast_metrics(retry_on_error: bool = True) -> Dict[str, Any]:
+    reset_log_file(KNOWN_LOGS["metrics"])
     result = await execute("ORCHESTRATE", "metrics.log")
     status = result.get("status")
     payload = read_json(METRICS_PATH)
@@ -130,7 +166,16 @@ async def run_and_broadcast_metrics() -> Dict[str, Any]:
         "metrics",
         {"source": "metrics", "data": {"raw": data, "summary": summary, "status": status}},
     )
+
+    if status != "ok" and retry_on_error:
+        asyncio.create_task(reschedule_metrics())
+
     return {"task": result, "summary": summary, "raw": data, "status": status}
+
+
+async def reschedule_metrics(delay: float = 5.0) -> None:
+    await asyncio.sleep(delay)
+    await run_and_broadcast_metrics(retry_on_error=False)
 
 
 def update_env(updates: Dict[str, str]) -> Dict[str, Any]:
@@ -228,7 +273,16 @@ async def watch_metrics() -> None:
 async def startup_event() -> None:
     asyncio.create_task(watch_logs())
     asyncio.create_task(watch_metrics())
+    reset_all_logs()
+    for name in KNOWN_LOGS:
+        await sse_manager.publish("log_reset", {"source": name})
+    asyncio.create_task(bootstrap_metrics())
     await sse_manager.publish("status", {"message": "controller_started", "timestamp": datetime.utcnow().isoformat() + "Z"})
+
+
+async def bootstrap_metrics() -> None:
+    await asyncio.sleep(3.0)
+    await run_and_broadcast_metrics()
 
 
 @app.get("/api/health")
@@ -238,6 +292,7 @@ async def health() -> Dict[str, Any]:
 
 @app.post("/api/demo/jailbreak/run", response_model=DemoResponse)
 async def run_jailbreak_demo() -> DemoResponse:
+    reset_log_file(JAILBREAK_LOG)
     await sse_manager.publish("log_reset", {"source": "jailbreak"})
     results = []
     results.append(await execute("JAILBREAK_BLOCKED", JAILBREAK_LOG.name))
@@ -252,6 +307,7 @@ async def run_jailbreak_demo() -> DemoResponse:
 @app.post("/api/demo/jailbreak/defense", response_model=DemoResponse)
 async def run_jailbreak_defense() -> DemoResponse:
     update_env({"STRICT_MODE": "true"})
+    reset_log_file(JAILBREAK_LOG)
     await sse_manager.publish("log_reset", {"source": "jailbreak"})
     result = await execute("JAILBREAK_BYPASS", JAILBREAK_LOG.name)
     metrics_info = await run_and_broadcast_metrics()
@@ -265,6 +321,7 @@ async def run_jailbreak_defense() -> DemoResponse:
 
 @app.post("/api/demo/rag/injection", response_model=DemoResponse)
 async def run_rag_injection() -> DemoResponse:
+    reset_log_file(RAG_INJECTION_LOG)
     await sse_manager.publish("log_reset", {"source": "rag_injection"})
     build = await execute("RAG_BUILD", RAG_INJECTION_LOG.name)
     run = await execute("RAG_RUN", RAG_INJECTION_LOG.name)
@@ -277,6 +334,7 @@ async def run_rag_injection() -> DemoResponse:
 
 @app.post("/api/demo/rag/defense", response_model=DemoResponse)
 async def run_rag_defense() -> DemoResponse:
+    reset_log_file(RAG_DEFENSE_LOG)
     await sse_manager.publish("log_reset", {"source": "rag_defense"})
     result = await execute("RAG_DEFENDED", RAG_DEFENSE_LOG.name)
     summary = "RAG defense run with sanitizer"
@@ -288,6 +346,7 @@ async def run_rag_defense() -> DemoResponse:
 
 @app.post("/api/demo/poisoning/run", response_model=DemoResponse)
 async def run_poisoning_demo() -> DemoResponse:
+    reset_log_file(POISONING_LOG)
     await sse_manager.publish("log_reset", {"source": "poisoning"})
     result = await execute("POISONING_RUN", POISONING_LOG.name)
     summary = "Poisoning demo complete"
@@ -299,6 +358,7 @@ async def run_poisoning_demo() -> DemoResponse:
 
 @app.post("/api/demo/redaction/run", response_model=DemoResponse)
 async def run_redaction_demo() -> DemoResponse:
+    reset_log_file(REDACTION_LOG)
     await sse_manager.publish("log_reset", {"source": "redaction"})
     result = await execute("REDACTION_RUN", REDACTION_LOG.name)
     summary = "Redaction demo complete"
@@ -372,6 +432,21 @@ async def get_settings() -> Dict[str, Any]:
         key, _, value = line.partition("=")
         current[key.strip()] = value.strip()
     return current
+
+
+@app.post("/api/logs/clear")
+async def clear_log(payload: ClearLogPayload) -> Dict[str, Any]:
+    name = payload.name
+    if name == "all":
+        reset_all_logs()
+        for key in KNOWN_LOGS:
+            await sse_manager.publish("log_reset", {"source": key})
+        return {"status": "ok", "cleared": list(KNOWN_LOGS.keys())}
+    if name not in KNOWN_LOGS:
+        raise HTTPException(status_code=404, detail="Log not found")
+    reset_log_file(KNOWN_LOGS[name])
+    await sse_manager.publish("log_reset", {"source": name})
+    return {"status": "ok", "cleared": name}
 
 
 @app.middleware("http")

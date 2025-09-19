@@ -47,6 +47,8 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - LAB_ENDPOINT=http://mock-llm:8000/complete
+      - JAILBREAK_API=http://mock-llm:8000/complete
+      - PYTHONPATH=/workspace
     volumes:
       - ./:/workspace
     working_dir: /workspace

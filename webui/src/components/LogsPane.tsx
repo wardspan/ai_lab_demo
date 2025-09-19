@@ -69,7 +69,8 @@ export function LogsPane({ activeLog, onActiveLogChange }: LogsPaneProps) {
     }
   };
 
-  const clearLog = () => {
+  const clearLog = async () => {
+    await api.clearLog(activeLog);
     setLogMap((prev) => ({ ...prev, [activeLog]: [] }));
   };
 

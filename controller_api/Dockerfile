@@ -10,5 +10,6 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 COPY . /workspace
 
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/workspace
 
 CMD ["uvicorn", "controller_api.server:app", "--host", "0.0.0.0", "--port", "5055"]

@@ -121,40 +121,46 @@ function AppContainer() {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
+  const defaultSummary: MetricsSummary = {
+    asr: 0,
+    leakage_count: 0,
+    detection_latency_ms: 0,
+    total_prompts: 0,
+  };
+
   const deriveSummary = (payload: any): MetricsSummary | null => {
     if (!payload) return null;
     const block = payload.metrics ?? payload;
     if (!block) return null;
     return {
-      asr: typeof block.asr === "number" ? block.asr : typeof block.attack_success_rate === "number" ? block.attack_success_rate : undefined,
-      leakage_count: block.leakage_count,
-      detection_latency_ms: block.detection_latency_ms,
-      total_prompts: block.total_prompts,
+      asr: typeof block.asr === "number" ? block.asr : typeof block.attack_success_rate === "number" ? block.attack_success_rate : 0,
+      leakage_count: typeof block.leakage_count === "number" ? block.leakage_count : 0,
+      detection_latency_ms: typeof block.detection_latency_ms === "number" ? block.detection_latency_ms : 0,
+      total_prompts: typeof block.total_prompts === "number" ? block.total_prompts : 0,
     };
   };
+
+  const pushMetricsPoint = useCallback((summary: MetricsSummary, label = new Date().toLocaleTimeString()) => {
+    setLatestMetrics(summary);
+    setMetricsHistory((prev) => [...prev.slice(-19), {
+      timestamp: label,
+      asr: summary.asr ?? 0,
+      leakage: summary.leakage_count ?? 0,
+      latency: summary.detection_latency_ms ?? 0,
+    }]);
+  }, []);
 
   const loadMetrics = useCallback(async () => {
     try {
       const response = await api.getMetrics();
       if (response.metrics) {
-        const summary = response.metrics.summary ?? deriveSummary(response.metrics.data);
-        if (!summary) {
-          return;
-        }
-        const timestamp = new Date().toLocaleTimeString();
-        setLatestMetrics(summary);
-        const point = {
-          timestamp,
-          asr: summary.asr ?? 0,
-          leakage: summary.leakage_count ?? 0,
-          latency: summary.detection_latency_ms ?? 0,
-        };
-        setMetricsHistory((prev) => [...prev.slice(-19), point]);
+        const summary = response.metrics.summary ?? deriveSummary(response.metrics.data) ?? defaultSummary;
+        pushMetricsPoint(summary);
       }
     } catch (error) {
       console.warn("Metrics fetch failed", error);
     }
-  }, []);
+  }, [deriveSummary, pushMetricsPoint]);
 
   useEffect(() => {
     loadMetrics();
@@ -166,19 +172,9 @@ function AppContainer() {
       try {
         const payload = JSON.parse((event as MessageEvent).data);
         if (payload?.data) {
-          const summary = (payload.data.summary as MetricsSummary) ?? deriveSummary(payload.data.raw);
-          if (!summary) {
-            return;
-          }
+          const summary = (payload.data.summary as MetricsSummary) ?? deriveSummary(payload.data.raw) ?? defaultSummary;
           const timestamp = new Date().toLocaleTimeString();
-          setLatestMetrics(summary);
-          const point = {
-            timestamp,
-            asr: summary.asr ?? 0,
-            leakage: summary.leakage_count ?? 0,
-            latency: summary.detection_latency_ms ?? 0,
-          };
-          setMetricsHistory((prev) => [...prev.slice(-19), point]);
+          pushMetricsPoint(summary, timestamp);
         }
       } catch (error) {
         console.warn("metrics event parse failed", error);
@@ -201,40 +197,46 @@ function AppContainer() {
     async (key: DemoKey) => {
       setRunning((prev) => ({ ...prev, [key]: true }));
       try {
+        let responseData: any = null;
         switch (key) {
           case "jailbreak":
-            await api.runJailbreak();
+            responseData = await api.runJailbreak();
             break;
           case "jailbreak-defense":
-            await api.runJailbreakDefense();
+            responseData = await api.runJailbreakDefense();
             break;
           case "rag-injection":
-            await api.runRagInjection();
+            responseData = await api.runRagInjection();
             break;
           case "rag-defense":
-            await api.runRagDefense();
+            responseData = await api.runRagDefense();
             break;
           case "poisoning":
-            await api.runPoisoning();
+            responseData = await api.runPoisoning();
             break;
           case "redaction":
-            await api.runRedaction();
+            responseData = await api.runRedaction();
             break;
           case "orchestrate":
-            await api.orchestrate();
+            responseData = await api.orchestrate();
             await loadMetrics();
             break;
           default:
             break;
+        }
+        const summaryFromResponse = responseData?.results?.metrics?.summary || responseData?.summary;
+        if (summaryFromResponse) {
+          pushMetricsPoint(summaryFromResponse, new Date().toLocaleTimeString());
         }
         pushToast({ title: "Success", description: `${key} executed`, variant: "success" });
       } catch (error: any) {
         pushToast({ title: "Error", description: error?.message || "Demo failed", variant: "error" });
       } finally {
         setRunning((prev) => ({ ...prev, [key]: false }));
+        await loadMetrics();
       }
     },
-    [loadMetrics, pushToast]
+    [loadMetrics, pushMetricsPoint, pushToast]
   );
 
   useEffect(() => {
